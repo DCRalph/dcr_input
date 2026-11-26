@@ -111,7 +111,7 @@ Controls::Encoder knob(c);
   hardware. The maximum suits mechanical knobs; lower it for fast optical encoders.
   The interrupt decoder has no filter: bounce steps back and forth and cancels,
   and a skipped state counts nothing.
-- **Polling:** the counter is read in `update()` and installs no interrupt. Its 16
+- **Polling:** the PCNT counter is read in `update()`, with no interrupt. Its 16
   bits restart at 30000, which `update()` follows as long as fewer than 15000
   counts pass between calls, far beyond any hand on a knob.
 - **Elsewhere:** `Config::readCount` takes a count from anything else, such as an
