@@ -14,12 +14,7 @@ namespace Controls
   void Button::begin(uint32_t nowMs)
   {
     if (config_.pin >= 0 && !config_.read)
-    {
-      const uint8_t mode = config_.pull == Pull::Up     ? INPUT_PULLUP
-                           : config_.pull == Pull::Down ? INPUT_PULLDOWN
-                                                        : INPUT;
-      pinMode(config_.pin, mode);
-    }
+      pinMode(config_.pin, detail::inputMode(config_.pull));
     reset(readRaw(), nowMs);
   }
 

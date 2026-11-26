@@ -3,13 +3,14 @@
 #include <functional>
 
 #include "Controls.h"
-#include "Pcnt.h"
+#include "Quadrature.h"
 
 namespace Controls
 {
   /**
-   * A rotary encoder in detents. Given pins, it decodes quadrature on one of the
-   * chip's PCNT units in hardware; given `readCount`, it uses any other counter.
+   * A rotary encoder in detents. Given pins, it decodes quadrature on a PCNT unit,
+   * or on pin-change interrupts where there is none free; given `readCount`, it
+   * uses any other counter.
    */
   class Encoder : public Device
   {
@@ -20,7 +21,7 @@ namespace Controls
       int pinB = -1;
       Decoding decoding = Decoding::Full;
       Pull pull = Pull::Up;                                   // on A and B
-      uint16_t glitchFilterNs = detail::kPcntMaxFilterNs;     // shorter pulses are bounce; 0 = off
+      uint16_t glitchFilterNs = detail::kPcntMaxFilterNs;     // PCNT only: shorter pulses are bounce; 0 = off
       uint8_t countsPerDetent = 4;                            // 4 for Full decoding of a typical detented knob
       int8_t direction = 1;                                   // -1 flips clockwise
 
@@ -46,8 +47,10 @@ namespace Controls
     /** One raw count. update() calls it with the hardware's running count. */
     void feed(int64_t count, uint32_t nowMs);
 
-    /** False if pins were given but no PCNT unit was free (S3: 4, ESP32: 8). */
-    bool ready() const { return config_.readCount || pcnt_.ready(); }
+    /** False until begin(), or if the pins cannot take interrupts. */
+    bool ready() const { return config_.readCount || counter_.ready(); }
+    /** True when a PCNT unit decodes it; false on interrupts (ESP8266, C3, or units all taken). */
+    bool usesPcnt() const { return counter_.usesPcnt(); }
 
     /** Detents turned this frame, positive clockwise. Turns on frames nobody reads are gone. */
     int32_t delta() const { return delta_; }
@@ -65,9 +68,7 @@ namespace Controls
     int64_t readRaw();
 
     Config config_;
-    detail::PcntCounter pcnt_;
-    int16_t pcntLast_ = 0;
-    int64_t pcntTotal_ = 0;
+    detail::QuadratureCounter counter_;
 
     int64_t origin_ = 0;
     int64_t count_ = 0;

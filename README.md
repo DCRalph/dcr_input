@@ -1,7 +1,7 @@
 # dcr_input
 
-Buttons, rotary encoders and joysticks for ESP32. Each one is debounced and
-sampled once per loop, and its state holds for that whole frame.
+Buttons, rotary encoders and joysticks for ESP32 and ESP8266. Each one is
+debounced and sampled once per loop, and its state holds for that whole frame.
 
 ## Install
 
@@ -10,8 +10,9 @@ lib_deps =
   https://github.com/DCRalph/dcr_input.git
 ```
 
-There are no other dependencies: encoders are decoded on the chip's PCNT units by
-this library, on Arduino-ESP32 2.x (IDF 4.4) and 3.x (IDF 5). Everything lives in the `Controls` namespace,
+There are no other dependencies: this library decodes encoders itself, on the
+chip's PCNT units (Arduino-ESP32 2.x and 3.x, so IDF 4.4 and 5) or on pin-change
+interrupts (ESP8266, ESP32-C3). Everything lives in the `Controls` namespace,
 so `Controls::Button` does not clash with dcr_display's `Button` widget.
 
 ## Quick start
@@ -84,7 +85,9 @@ the device on does not show up as a click.
 ## Encoder
 
 `Controls::Encoder` decodes quadrature in hardware on one of the chip's PCNT units
-(ESP32: 8, S3: 4), so no turn is missed however long a frame takes. `delta()` is
+(ESP32: 8, S3: 4), so no turn is missed however long a frame takes. Where there is
+no free unit, or no PCNT at all (ESP8266, ESP32-C3), it decodes on pin-change
+interrupts instead, with the same counts and direction; `usesPcnt()` says which. `delta()` is
 the detents turned this frame, `position()` the detents since `begin()` or
 `reset()`, and `rawCount()` the counts before detents.
 
@@ -104,13 +107,15 @@ Controls::Encoder knob(c);
   past the last one, so a knob resting on a boundary or contact bounce never steps
   back and forth. Use 4 with Full decoding for the usual 1 cycle per click, 2 for
   knobs with a click every half cycle.
-- **Glitch filter:** pulses shorter than `glitchFilterNs` are ignored in hardware.
-  The maximum suits mechanical knobs; lower it for fast optical encoders.
-- **Polling:** the counter is read in `update()` and installs no interrupt. Its 16
+- **Glitch filter:** on PCNT, pulses shorter than `glitchFilterNs` are ignored in
+  hardware. The maximum suits mechanical knobs; lower it for fast optical encoders.
+  The interrupt decoder has no filter: bounce steps back and forth and cancels,
+  and a skipped state counts nothing.
+- **Polling:** the PCNT counter is read in `update()`, with no interrupt. Its 16
   bits restart at 30000, which `update()` follows as long as fewer than 15000
   counts pass between calls, far beyond any hand on a knob.
-- **No PCNT left:** `ready()` is false if every unit is taken, or on chips without
-  PCNT (ESP32-C3). `Config::readCount` takes a count from anywhere else instead.
+- **Elsewhere:** `Config::readCount` takes a count from anything else, such as an
+  I/O expander, in place of pins.
 
 ## Joystick
 

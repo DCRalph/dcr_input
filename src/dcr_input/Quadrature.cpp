@@ -1,10 +1,15 @@
-#include "Pcnt.h"
+#include "Quadrature.h"
+
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
 
 #if defined(ESP_PLATFORM)
 #include <driver/gpio.h>
 #include <esp_idf_version.h>
 #include <soc/soc_caps.h>
 #if SOC_PCNT_SUPPORTED
+#define DCR_INPUT_PCNT 1
 #if ESP_IDF_VERSION_MAJOR >= 5
 #include <driver/pulse_cnt.h>
 #else
@@ -13,10 +18,29 @@
 #endif
 #endif
 
+#ifndef DRAM_ATTR
+#define DRAM_ATTR
+#endif
+
 namespace Controls
 {
   namespace detail
   {
+    namespace
+    {
+      // Indexed by prev << 2 | curr, A as the high bit of each. A leading B
+      // (00 10 11 01) counts down, as the PCNT channels below do.
+      DRAM_ATTR const int8_t kSteps[16] = {0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0};
+    }
+
+    int8_t quadratureStep(uint8_t prev, uint8_t curr) { return kSteps[((prev & 3) << 2) | (curr & 3)]; }
+
+    int64_t scaleCounts(int64_t fullCounts, Decoding decoding)
+    {
+      const int64_t d = decoding == Decoding::Full ? 1 : decoding == Decoding::Half ? 2 : 4;
+      return fullCounts >= 0 ? fullCounts / d : -((-fullCounts + d - 1) / d);
+    }
+
     int32_t pcntDelta(int16_t before, int16_t after)
     {
       int32_t d = static_cast<int32_t>(after) - before;
@@ -27,7 +51,79 @@ namespace Controls
       return d;
     }
 
-#if defined(ESP_PLATFORM) && SOC_PCNT_SUPPORTED
+    bool QuadratureCounter::begin(int pinA, int pinB, Decoding decoding, Pull pull, uint16_t glitchFilterNs)
+    {
+      if (ready())
+        return true;
+      decoding_ = decoding;
+      if (beginPcnt(pinA, pinB, decoding, pull, glitchFilterNs))
+        backend_ = Backend::Pcnt;
+      else if (beginInterrupts(pinA, pinB, pull))
+        backend_ = Backend::Interrupts;
+      return ready();
+    }
+
+    int64_t QuadratureCounter::total()
+    {
+      if (backend_ == Backend::Pcnt)
+      {
+        const int16_t now = readPcnt();
+        total_ += pcntDelta(pcntLast_, now);
+        pcntLast_ = now;
+        return total_;
+      }
+      if (backend_ == Backend::Interrupts)
+      {
+        // Unsigned subtraction follows the 32-bit count through any wrap.
+        const int32_t now = isr_.count;
+        total_ += static_cast<int32_t>(static_cast<uint32_t>(now) - static_cast<uint32_t>(isrLast_));
+        isrLast_ = now;
+        return scaleCounts(total_, decoding_);
+      }
+      return 0;
+    }
+
+#if defined(ARDUINO)
+    namespace
+    {
+      uint8_t readAB(uint8_t pinA, uint8_t pinB)
+      {
+        return static_cast<uint8_t>((digitalRead(pinA) == HIGH ? 2 : 0) | (digitalRead(pinB) == HIGH ? 1 : 0));
+      }
+
+      // Bounce only steps back and forth here, and a skipped state counts 0.
+      void IRAM_ATTR onEdge(void *arg)
+      {
+        auto *s = static_cast<QuadratureCounter::IsrState *>(arg);
+        const uint8_t ab = static_cast<uint8_t>((digitalRead(s->pinA) == HIGH ? 2 : 0) |
+                                                (digitalRead(s->pinB) == HIGH ? 1 : 0));
+        s->count = s->count + kSteps[(s->ab << 2) | ab];
+        s->ab = ab;
+      }
+    }
+
+    bool QuadratureCounter::beginInterrupts(int pinA, int pinB, Pull pull)
+    {
+#ifdef NOT_AN_INTERRUPT
+      if (digitalPinToInterrupt(pinA) == NOT_AN_INTERRUPT || digitalPinToInterrupt(pinB) == NOT_AN_INTERRUPT)
+        return false;
+#endif
+      pinMode(pinA, inputMode(pull));
+      pinMode(pinB, inputMode(pull));
+      isr_.pinA = static_cast<uint8_t>(pinA);
+      isr_.pinB = static_cast<uint8_t>(pinB);
+      isr_.ab = readAB(isr_.pinA, isr_.pinB);
+      isr_.count = 0;
+      isrLast_ = 0;
+      attachInterruptArg(digitalPinToInterrupt(pinA), onEdge, &isr_, CHANGE);
+      attachInterruptArg(digitalPinToInterrupt(pinB), onEdge, &isr_, CHANGE);
+      return true;
+    }
+#else
+    bool QuadratureCounter::beginInterrupts(int, int, Pull) { return false; }
+#endif
+
+#if DCR_INPUT_PCNT
     namespace
     {
       void setPull(int pin, Pull pull)
@@ -38,15 +134,11 @@ namespace Controls
       }
     }
 
-    // Both drivers get the same channels, so a knob turns the same way on either.
-    // Channel A counts A's edges, reversed while B is high; channel B counts B's
-    // edges, reversed while A is low. Each step of A-leads-B then counts -1.
+    // Both drivers get the same channels. Channel A counts A's edges, reversed
+    // while B is high; channel B counts B's edges, reversed while A is low.
 #if ESP_IDF_VERSION_MAJOR >= 5
-    bool PcntCounter::begin(int pinA, int pinB, Decoding decoding, Pull pull, uint16_t glitchFilterNs)
+    bool QuadratureCounter::beginPcnt(int pinA, int pinB, Decoding decoding, Pull pull, uint16_t glitchFilterNs)
     {
-      if (ready_)
-        return true;
-
       pcnt_unit_config_t unitConfig = {};
       unitConfig.low_limit = -kPcntLimit;
       unitConfig.high_limit = kPcntLimit;
@@ -102,15 +194,13 @@ namespace Controls
       pcnt_unit_clear_count(unit);
       pcnt_unit_start(unit);
       handle_ = unit;
-      ready_ = true;
       return true;
     }
 
-    int16_t PcntCounter::read()
+    int16_t QuadratureCounter::readPcnt()
     {
       int value = 0;
-      if (ready_)
-        pcnt_unit_get_count(static_cast<pcnt_unit_handle_t>(handle_), &value);
+      pcnt_unit_get_count(static_cast<pcnt_unit_handle_t>(handle_), &value);
       return static_cast<int16_t>(value);
     }
 #else
@@ -119,11 +209,8 @@ namespace Controls
       uint32_t usedUnits = 0; // bit n: this library holds unit n
     }
 
-    bool PcntCounter::begin(int pinA, int pinB, Decoding decoding, Pull pull, uint16_t glitchFilterNs)
+    bool QuadratureCounter::beginPcnt(int pinA, int pinB, Decoding decoding, Pull pull, uint16_t glitchFilterNs)
     {
-      if (ready_)
-        return true;
-
       int unit = -1;
       for (int u = 0; u < SOC_PCNT_UNITS_PER_GROUP; u++)
         if (!(usedUnits & (1u << u)))
@@ -192,27 +279,24 @@ namespace Controls
 
       usedUnits |= 1u << unit;
       unit_ = unit;
-      ready_ = true;
       return true;
     }
 
-    int16_t PcntCounter::read()
+    int16_t QuadratureCounter::readPcnt()
     {
       int16_t value = 0;
-      if (ready_)
-        pcnt_get_counter_value(static_cast<pcnt_unit_t>(unit_), &value);
+      pcnt_get_counter_value(static_cast<pcnt_unit_t>(unit_), &value);
       return value;
     }
 #endif
 #else
-    // No PCNT (host builds, ESP32-C3): pins cannot be counted; use Config::readCount.
-    bool PcntCounter::begin(int, int, Decoding, Pull, uint16_t)
+    bool QuadratureCounter::beginPcnt(int, int, Decoding, Pull, uint16_t)
     {
       unit_ = -1;
       handle_ = nullptr;
       return false;
     }
-    int16_t PcntCounter::read() { return 0; }
+    int16_t QuadratureCounter::readPcnt() { return 0; }
 #endif
   }
 }
