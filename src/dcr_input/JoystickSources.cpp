@@ -13,7 +13,7 @@ namespace Controls
   bool AnalogJoystick::begin()
   {
     if (buttonPin_ >= 0)
-      pinMode(buttonPin_, buttonActiveHigh_ ? INPUT_PULLDOWN : INPUT_PULLUP);
+      pinMode(buttonPin_, detail::inputMode(buttonActiveHigh_ ? Pull::Down : Pull::Up));
     return true;
   }
 
@@ -41,7 +41,7 @@ namespace Controls
 
   bool DigitalJoystick::begin()
   {
-    const uint8_t mode = activeHigh_ ? INPUT_PULLDOWN : INPUT_PULLUP;
+    const uint8_t mode = detail::inputMode(activeHigh_ ? Pull::Down : Pull::Up);
     for (int pin : {up_.pin, down_.pin, left_.pin, right_.pin, center_})
       if (pin >= 0)
         pinMode(pin, mode);

@@ -37,4 +37,15 @@ namespace Controls
   uint32_t lastActivityMs() { return lastActivity; }
 
   void noteActivity(uint32_t nowMs) { lastActivity = nowMs; }
+
+  uint8_t detail::inputMode(Pull pull)
+  {
+    if (pull == Pull::Up)
+      return INPUT_PULLUP;
+#ifdef INPUT_PULLDOWN
+    if (pull == Pull::Down)
+      return INPUT_PULLDOWN;
+#endif
+    return INPUT;
+  }
 }

@@ -4,8 +4,8 @@ namespace Controls
 {
   void Encoder::begin(uint32_t)
   {
-    if (!config_.readCount && config_.pinA >= 0 && config_.pinB >= 0 && !pcnt_.ready())
-      pcnt_.begin(config_.pinA, config_.pinB, config_.decoding, config_.pull, config_.glitchFilterNs);
+    if (!config_.readCount && config_.pinA >= 0 && config_.pinB >= 0)
+      counter_.begin(config_.pinA, config_.pinB, config_.decoding, config_.pull, config_.glitchFilterNs);
     origin_ = count_ = readRaw();
     detent_ = zero_ = 0;
     delta_ = 0;
@@ -19,14 +19,7 @@ namespace Controls
 
   int64_t Encoder::readRaw()
   {
-    if (config_.readCount)
-      return config_.readCount();
-    if (!pcnt_.ready())
-      return pcntTotal_;
-    const int16_t now = pcnt_.read();
-    pcntTotal_ += detail::pcntDelta(pcntLast_, now);
-    pcntLast_ = now;
-    return pcntTotal_;
+    return config_.readCount ? config_.readCount() : counter_.total();
   }
 
   // A detent counts only once the shaft is countsPerDetent - 1 counts past the

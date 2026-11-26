@@ -1,7 +1,7 @@
 {
   "name": "dcr_input",
-  "version": "1.1.0",
-  "description": "Buttons, rotary encoders and joysticks for ESP32: debounced, click-counted, per-frame state. Encoders decoded on the PCNT. Analog, digital, Nunchuk and Qwiic joysticks.",
+  "version": "1.2.0",
+  "description": "Buttons, rotary encoders and joysticks for ESP32 and ESP8266: debounced, click-counted, per-frame state. Encoders decoded on the PCNT or on interrupts. Analog, digital, Nunchuk and Qwiic joysticks.",
   "keywords": ["button", "debounce", "click", "encoder", "rotary", "joystick", "nunchuk", "qwiic", "esp32"],
   "repository": {
     "type": "git",
@@ -10,7 +10,7 @@
   "authors": [{ "name": "William Giles", "maintainer": true }],
   "license": "MIT",
   "frameworks": ["arduino"],
-  "platforms": ["espressif32"],
+  "platforms": ["espressif32", "espressif8266"],
   "dependencies": [],
   "export": { "exclude": ["test"] },
   "build": {

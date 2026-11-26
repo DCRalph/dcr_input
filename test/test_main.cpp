@@ -278,6 +278,33 @@ void testPcntDeltaAcrossTheLimit()
   CHECK_EQ(pcntDelta(kPcntLimit - 3, kPcntLimit - 1), 2);
 }
 
+void testQuadratureTable()
+{
+  using Controls::detail::quadratureStep;
+  const uint8_t aLeads[] = {0, 2, 3, 1, 0}; // AB: 00 10 11 01 00
+  int forward = 0, back = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    forward += quadratureStep(aLeads[i], aLeads[i + 1]);
+    back += quadratureStep(aLeads[i + 1], aLeads[i]);
+  }
+  CHECK_EQ(forward, -4); // the same sign as the PCNT channels
+  CHECK_EQ(back, 4);
+  CHECK_EQ(quadratureStep(0, 3), 0); // a skipped state is ignored
+  CHECK_EQ(quadratureStep(2, 2), 0);
+}
+
+void testScaleCountsRoundsDown()
+{
+  using Controls::Decoding;
+  using Controls::detail::scaleCounts;
+  CHECK_EQ(scaleCounts(7, Decoding::Half), 3);
+  CHECK_EQ(scaleCounts(-1, Decoding::Half), -1);
+  CHECK_EQ(scaleCounts(-4, Decoding::Single), -1);
+  CHECK_EQ(scaleCounts(-5, Decoding::Single), -2);
+  CHECK_EQ(scaleCounts(-5, Decoding::Full), -5);
+}
+
 void testEncoderWithoutPcnt()
 {
   Encoder e(5, 6); // the host has no PCNT
@@ -478,6 +505,8 @@ int main()
   testEncoderDetents();
   testEncoderDirectionAndSingleCount();
   testPcntDeltaAcrossTheLimit();
+  testQuadratureTable();
+  testScaleCountsRoundsDown();
   testEncoderWithoutPcnt();
   testAnalogJoystickScaling();
   testDirectionHysteresis();

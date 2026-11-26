@@ -40,4 +40,10 @@ namespace Controls
   uint32_t lastActivityMs();
   /** Devices call this when a person touches them. */
   void noteActivity(uint32_t nowMs);
+
+  namespace detail
+  {
+    /** The pinMode for an input with this pull. Pull::Down is INPUT where the core has none (ESP8266). */
+    uint8_t inputMode(Pull pull);
+  }
 }
