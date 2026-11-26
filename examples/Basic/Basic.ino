@@ -1,11 +1,9 @@
-// A detented encoder on the PCNT unit and two buttons, printed as they happen.
-#include <ESP32Encoder.h>
+// A detented encoder, decoded on a PCNT unit, and two buttons, printed as they happen.
 #include <dcr_input.h>
 
 constexpr int kEncoderA = 5, kEncoderB = 6, kEncoderPush = 7, kBack = 8;
 
-ESP32Encoder pcnt;
-Controls::Encoder knob([] { return pcnt.getCount(); });
+Controls::Encoder knob(kEncoderA, kEncoderB);
 Controls::Button push(kEncoderPush);
 Controls::Button back([] {
   Controls::Button::Config c;
@@ -17,9 +15,6 @@ Controls::Button back([] {
 void setup()
 {
   Serial.begin(115200);
-  pcnt.attachFullQuad(kEncoderA, kEncoderB);
-  pcnt.setFilter(1023); // the PCNT glitch filter, against contact bounce
-
   Controls::add(knob);
   Controls::add(push);
   Controls::add(back);

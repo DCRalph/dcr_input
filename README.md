@@ -8,24 +8,21 @@ sampled once per loop, and its state holds for that whole frame.
 ```ini
 lib_deps =
   https://github.com/DCRalph/dcr_input.git
-  madhephaestus/ESP32Encoder   ; only for Controls::Encoder on the PCNT unit
 ```
 
-There are no other dependencies. Everything lives in the `Controls` namespace,
+There are no other dependencies: encoders are decoded on the chip's PCNT units by
+this library, on Arduino-ESP32 2.x (IDF 4.4) and 3.x (IDF 5). Everything lives in the `Controls` namespace,
 so `Controls::Button` does not clash with dcr_display's `Button` widget.
 
 ## Quick start
 
 ```cpp
-#include <ESP32Encoder.h>
 #include <dcr_input.h>
 
-ESP32Encoder pcnt;
-Controls::Encoder knob([] { return pcnt.getCount(); });
+Controls::Encoder knob(ENCODER_A, ENCODER_B);   // 4 counts per detent
 Controls::Button push(ENCODER_PUSH_PIN);        // active low, internal pull-up
 
 void setup() {
-  pcnt.attachFullQuad(ENCODER_A, ENCODER_B);
   Controls::add(knob);                         // sets pins up, takes the resting state
   Controls::add(push);
 }
@@ -86,15 +83,34 @@ the device on does not show up as a click.
 
 ## Encoder
 
-`Controls::Encoder` turns a raw quadrature count into detents.
+`Controls::Encoder` decodes quadrature in hardware on one of the chip's PCNT units
+(ESP32: 8, S3: 4), so no turn is missed however long a frame takes. `delta()` is
+the detents turned this frame, `position()` the detents since `begin()` or
+`reset()`, and `rawCount()` the counts before detents.
 
-- `delta()` is the detents turned this frame.
-- `position()` is the count since `begin()` or `reset()`.
+```cpp
+Controls::Encoder::Config c;
+c.pinA = 5;
+c.pinB = 6;
+c.decoding = Controls::Decoding::Full; // Full: 4 counts per cycle, Half: 2, Single: 1
+c.pull = Controls::Pull::Up;           // on A and B
+c.glitchFilterNs = 12700;              // the default and the maximum; 0 turns it off
+c.countsPerDetent = 4;
+c.direction = -1;                      // if clockwise counts down
+Controls::Encoder knob(c);
+```
 
-A detent counts only once the shaft is `countsPerDetent - 1` counts past the last
-one. A knob resting on a boundary, or contact bounce, can't make it step back and
-forth. Counting is left to hardware: ESP32Encoder's `attachFullQuad` on the PCNT
-unit, with `setFilter(1023)` against bounce.
+- **Detents:** a detent counts only once the shaft is `countsPerDetent - 1` counts
+  past the last one, so a knob resting on a boundary or contact bounce never steps
+  back and forth. Use 4 with Full decoding for the usual 1 cycle per click, 2 for
+  knobs with a click every half cycle.
+- **Glitch filter:** pulses shorter than `glitchFilterNs` are ignored in hardware.
+  The maximum suits mechanical knobs; lower it for fast optical encoders.
+- **Polling:** the counter is read in `update()` and installs no interrupt. Its 16
+  bits restart at 30000, which `update()` follows as long as fewer than 15000
+  counts pass between calls, far beyond any hand on a knob.
+- **No PCNT left:** `ready()` is false if every unit is taken, or on chips without
+  PCNT (ESP32-C3). `Config::readCount` takes a count from anywhere else instead.
 
 ## Joystick
 
