@@ -4,6 +4,14 @@
 
 namespace Controls
 {
+  /** Internal resistor on an input pin. */
+  enum class Pull : uint8_t
+  {
+    None,
+    Up,
+    Down,
+  };
+
   // Anything Controls::update() drives. Not copyable: the registry keeps its address.
   class Device
   {

@@ -267,6 +267,26 @@ void testEncoderDirectionAndSingleCount()
   CHECK_EQ(e.position(), -3);
 }
 
+void testPcntDeltaAcrossTheLimit()
+{
+  using Controls::detail::kPcntLimit;
+  using Controls::detail::pcntDelta;
+  CHECK_EQ(pcntDelta(10, 14), 4);
+  CHECK_EQ(pcntDelta(14, 10), -4);
+  CHECK_EQ(pcntDelta(kPcntLimit - 1, 1), 2);   // reached the limit, restarted at 0
+  CHECK_EQ(pcntDelta(-kPcntLimit + 1, -1), -2);
+  CHECK_EQ(pcntDelta(kPcntLimit - 3, kPcntLimit - 1), 2);
+}
+
+void testEncoderWithoutPcnt()
+{
+  Encoder e(5, 6); // the host has no PCNT
+  e.begin(0);
+  CHECK(!e.ready());
+  e.update(0);
+  CHECK_EQ(e.delta(), 0);
+}
+
 void testAnalogJoystickScaling()
 {
   Fake::adc[1] = 2000; // resting off-centre, as real sticks do
@@ -457,6 +477,8 @@ int main()
   testAnalogLadder();
   testEncoderDetents();
   testEncoderDirectionAndSingleCount();
+  testPcntDeltaAcrossTheLimit();
+  testEncoderWithoutPcnt();
   testAnalogJoystickScaling();
   testDirectionHysteresis();
   testDigitalJoystick();

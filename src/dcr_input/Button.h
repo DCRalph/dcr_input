@@ -14,12 +14,7 @@ namespace Controls
   class Button : public Device
   {
   public:
-    enum class Pull : uint8_t
-    {
-      None,
-      Up,
-      Down,
-    };
+    using Pull = Controls::Pull;
 
     struct Config
     {
